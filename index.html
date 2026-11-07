@@ -25,6 +25,10 @@
   .primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 20px; font: inherit; font-weight: 600; cursor: pointer; }
   .status { display: flex; gap: 20px; font-variant-numeric: tabular-nums; margin: 8px 0; color: var(--muted); font-size: 14px; }
   .status b { color: var(--fg); font-size: 18px; }
+  @media (max-width: 600px) {
+    main { padding: 16px 8px 32px; }
+    .board { padding: 8px 2px; }
+  }
   .board { background: var(--card); border-radius: 12px; padding: 12px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   svg { width: 100%; height: auto; display: block; }
   .staffline { stroke: var(--line); stroke-width: 1; }
@@ -99,7 +103,7 @@
     <span>時間 <b id="timer">0.0</b> 秒</span>
   </div>
 
-  <div class="board"><svg id="score" viewBox="0 0 1204 300" role="img" aria-label="楽譜"></svg></div>
+  <div class="board"><svg id="score" viewBox="0 0 860 214" role="img" aria-label="楽譜"></svg></div>
 
   <div class="input-line">
     <span>入力:</span><span class="buffer" id="buffer"></span>
@@ -205,8 +209,17 @@ function createRomaji(onNote) {
 /* ===== render/staff ===== */
 const SVGNS = 'http://www.w3.org/2000/svg';
 const SP = 10;                 // 線間
-const ROW_TOP = [32, 127, 222, 317];     // 各段の第5線のY
-const X0 = 20, STAFF_W = 820, NOTE_X0 = 88, NOTE_DX = 23.5;
+const X0 = 20, NOTE_X0 = 88, NOTE_DX = 23.5, ROW_H = 95, FIRST_TOP = 32;
+// 表示レイアウト: 画面幅に合わせて1段の音数(32/16/8)を選ぶ。線間が MIN_SP_PX 以上になる最大の音数
+const MIN_SP_PX = 6.5;
+const staffWOf = perRow => (NOTE_X0 - X0) + (perRow - 1) * NOTE_DX + 23;
+const vbWOf = perRow => X0 + staffWOf(perRow) + 20;
+function chooseLayout(widthPx) {
+  for (const perRow of [32, 16, 8]) {
+    if (SP * widthPx / vbWOf(perRow) >= MIN_SP_PX) return perRow;
+  }
+  return 8;
+}
 const el = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(SVGNS, tag);
   for (const k in attrs) e.setAttribute(k, attrs[k]);
@@ -214,7 +227,8 @@ const el = (tag, attrs = {}, parent) => {
   return e;
 };
 // 段の Y 座標: staffPos 0(第1線) が一番下
-const yOf = (row, pos) => ROW_TOP[row] + 4 * SP - pos * (SP / 2);
+const rowTop = row => FIRST_TOP + row * ROW_H; // 各段の第5線のY
+const yOf = (row, pos) => rowTop(row) + 4 * SP - pos * (SP / 2);
 
 function drawTreble(g, top) {
   // 第2線(ソ)を中心に巻く
@@ -237,18 +251,23 @@ function drawBass(g, top) {
 
 function render(svg, game) {
   svg.textContent = '';
-  const root = el('g', { transform: 'scale(1.4)' }, svg);
-  for (let row = 0; row < ROWS; row++) {
-    const clef = game.clefs[row];
-    const top = ROW_TOP[row];
+  const perRow = chooseLayout(svg.clientWidth || 860);
+  const rows = Math.ceil(COUNT / perRow);
+  const STAFF_W = staffWOf(perRow);
+  svg.setAttribute('viewBox', `0 0 ${vbWOf(perRow)} ${rows * ROW_H + 24}`);
+  const root = el('g', {}, svg);
+  for (let row = 0; row < rows; row++) {
+    // 音部記号は出題上の段(32音ごと)で決まる。表示の段はその中に収まる
+    const clef = game.clefs[Math.floor(row * perRow / PER_ROW)];
+    const top = rowTop(row);
     const g = el('g', {}, root);
     for (let i = 0; i < 5; i++) el('line', { class: 'staffline', x1: X0, x2: X0 + STAFF_W, y1: top + i * SP, y2: top + i * SP }, g);
     el('line', { class: 'staffline', x1: X0, x2: X0, y1: top, y2: top + 4 * SP }, g);
     el('line', { class: 'staffline', x1: X0 + STAFF_W, x2: X0 + STAFF_W, y1: top, y2: top + 4 * SP }, g);
     clef === 'treble' ? drawTreble(g, top) : drawBass(g, top);
 
-    for (let j = 0; j < PER_ROW; j++) {
-      const idx = row * PER_ROW + j;
+    for (let j = 0; j < perRow; j++) {
+      const idx = row * perRow + j;
       const n = game.notes[idx];
       if (n === undefined) continue;
       const x = NOTE_X0 + j * NOTE_DX;
@@ -423,6 +442,11 @@ window.addEventListener('keydown', e => {
   }
 });
 
+let lastPerRow = null;
+window.addEventListener('resize', () => {
+  const pr = chooseLayout(svg.clientWidth || 860);
+  if (pr !== lastPerRow) { lastPerRow = pr; update(); }
+});
 update();
 </script>
 </body>
