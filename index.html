@@ -95,8 +95,8 @@
     </div>
     <div><span class="label">入力ガイド</span>
       <span class="seg" id="padSeg">
-        <button data-v="off" class="on">非表示</button>
-        <button data-v="on">表示</button>
+        <button data-v="off">非表示</button>
+        <button data-v="on" class="on">表示</button>
       </span>
     </div>
     <div><span class="label">音</span>
@@ -330,7 +330,7 @@ const loadBest = () => { try { const v = localStorage.getItem(bestKey()); return
 const saveBest = v => { try { localStorage.setItem(bestKey(), String(v)); } catch (e) {} };
 
 /* ===== game/session ===== */
-const settings = { mode: 'random', clef: 'treble', sound: true, pad: false };
+const settings = { mode: 'random', clef: 'treble', sound: true, pad: true };
 const game = { state: 'idle', notes: [], clefs: Array(ROWS).fill('treble'), cursor: 0, misses: 0, missed: [], flashNg: false, t0: 0, elapsed: 0 };
 const $ = id => document.getElementById(id);
 const svg = $('score');
