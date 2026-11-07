@@ -26,8 +26,19 @@
   .status { display: flex; gap: 20px; font-variant-numeric: tabular-nums; margin: 8px 0; color: var(--muted); font-size: 14px; }
   .status b { color: var(--fg); font-size: 18px; }
   @media (max-width: 600px) {
-    main { padding: 16px 8px 32px; }
-    .board { padding: 8px 2px; }
+    main { padding: 10px 8px 24px; }
+    h1 { font-size: 16px; margin-bottom: 8px; }
+    .controls { gap: 6px 10px; margin-bottom: 8px; }
+    .label { font-size: 10px; margin-right: 3px; }
+    .seg button { padding: 3px 8px; font-size: 12px; }
+    .primary { padding: 5px 12px; font-size: 13px; }
+    .status { gap: 12px; margin: 4px 0; font-size: 12px; }
+    .status b { font-size: 15px; }
+    .board { padding: 6px 2px; }
+    .input-line { margin-top: 6px; min-height: 22px; font-size: 15px; }
+    .pad { gap: 4px; margin-top: 6px; }
+    .pad button { padding: 9px 0; font-size: 15px; }
+    .help { font-size: 11px; margin-top: 8px; line-height: 1.5; }
   }
   .board { background: var(--card); border-radius: 12px; padding: 12px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   svg { width: 100%; height: auto; display: block; }
