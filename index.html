@@ -125,7 +125,7 @@
 
   <p class="help">
     <span id="romajiGuide" hidden>ローマ字で入力します:
-    <kbd>do</kbd> ド　<kbd>re</kbd> レ　<kbd>mi</kbd> ミ　<kbd>fa</kbd> ファ　<kbd>so</kbd> ソ　<kbd>ra</kbd>/<kbd>la</kbd> ラ　<kbd>si</kbd>/<kbd>shi</kbd>/<kbd>ti</kbd> シ<br></span>
+    <kbd>si</kbd>/<kbd>shi</kbd>/<kbd>ti</kbd> シ　<kbd>so</kbd> ソ　<kbd>do</kbd> ド　<kbd>fa</kbd> ファ　<kbd>mi</kbd> ミ　<kbd>ra</kbd>/<kbd>la</kbd> ラ　<kbd>re</kbd> レ<br></span>
     蛇モードは、隣か1つ飛ばしの音(2度・3度)で上下に連なって出題されます。<kbd>Esc</kbd> で中断します。
   </p>
 </main>
@@ -431,9 +431,11 @@ $('reviewBtn').addEventListener('click', () => $('overlay').classList.remove('sh
 $('againBtn').addEventListener('click', e => { e.target.blur(); newProblem(); });
 
 const pad = $('pad');
-NAMES.forEach((name, i) => {
+// ボタンはあえて音階順ではなく、あいうえお順に並べる(位置で答えられないように)
+const PAD_ORDER = [6, 4, 0, 3, 2, 5, 1]; // シ ソ ド ファ ミ ラ レ
+PAD_ORDER.forEach(i => {
   const b = document.createElement('button');
-  b.textContent = name;
+  b.textContent = NAMES[i];
   b.addEventListener('click', () => { b.blur(); answer(i); });
   pad.appendChild(b);
 });
