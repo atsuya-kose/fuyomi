@@ -37,7 +37,8 @@
     .board { padding: 6px 2px; }
     .input-line { margin-top: 6px; min-height: 22px; font-size: 15px; }
     .pad { gap: 4px; margin-top: 6px; }
-    .pad button { padding: 9px 0; font-size: 15px; }
+    .pad-order { margin-top: 8px; display: flex; justify-content: flex-end; align-items: center; }
+  .pad button { padding: 9px 0; font-size: 15px; }
     .help { font-size: 11px; margin-top: 8px; line-height: 1.5; }
   }
   .board { background: var(--card); border-radius: 12px; padding: 12px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -60,7 +61,7 @@
   .buffer { color: var(--accent); }
   .ime { color: var(--ng); font-size: 14px; font-family: inherit; }
   .pad { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 12px; }
-  .pad[hidden], #romajiGuide[hidden], #widthBox[hidden], #cposBox[hidden] { display: none; }
+  .pad[hidden], #padOrderBox[hidden], #romajiGuide[hidden], #widthBox[hidden], #cposBox[hidden] { display: none; }
   .pad button { padding: 12px 0; font: inherit; font-size: 16px; border: 1px solid var(--muted); border-radius: 8px; background: var(--card); color: var(--fg); cursor: pointer; }
   .pad button:active { background: var(--accent); color: #fff; }
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; }
@@ -140,6 +141,12 @@
   </div>
 
   <div class="pad" id="pad" hidden></div>
+  <div class="pad-order" id="padOrderBox"><span class="label">ボタンの並び</span>
+    <span class="seg" id="padOrderSeg">
+      <button data-v="kana" class="on">あいうえお順</button>
+      <button data-v="scale">音階順</button>
+    </span>
+  </div>
 
   <p class="help">
     <span id="romajiGuide" hidden>ローマ字で入力します:
@@ -378,7 +385,7 @@ const loadBest = () => { try { const v = localStorage.getItem(bestKey()); return
 const saveBest = v => { try { localStorage.setItem(bestKey(), String(v)); } catch (e) {} };
 
 /* ===== game/session ===== */
-const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 'u3' };
+const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 'u3', padOrder: 'kana' };
 const game = { state: 'idle', notes: [], clefs: Array(ROWS).fill('treble'), cursor: 0, misses: 0, missed: [], flashNg: false, t0: 0, elapsed: 0 };
 const $ = id => document.getElementById(id);
 const svg = $('score');
@@ -457,6 +464,7 @@ function abort() {
 function update() {
   render(svg, game);
   $('pad').hidden = !settings.pad;
+  $('padOrderBox').hidden = !settings.pad;
   $('romajiGuide').hidden = !settings.pad;
   $('progress').textContent = `${game.cursor} / ${COUNT}`;
   $('misses').textContent = game.misses;
@@ -492,13 +500,27 @@ $('reviewBtn').addEventListener('click', () => $('overlay').classList.remove('sh
 $('againBtn').addEventListener('click', e => { e.target.blur(); newProblem(); });
 
 const pad = $('pad');
-// ボタンはあえて音階順ではなく、あいうえお順に並べる(位置で答えられないように)
-const PAD_ORDER = [6, 4, 0, 3, 2, 5, 1]; // シ ソ ド ファ ミ ラ レ
-PAD_ORDER.forEach(i => {
-  const b = document.createElement('button');
-  b.textContent = NAMES[i];
-  b.addEventListener('click', () => { b.blur(); answer(i); });
-  pad.appendChild(b);
+// ボタンの並び: 初期値はあえてあいうえお順(位置で答えられないように)。音階順にも切り替えられる
+const PAD_ORDERS = {
+  kana:  [6, 4, 0, 3, 2, 5, 1], // シ ソ ド ファ ミ ラ レ
+  scale: [0, 1, 2, 3, 4, 5, 6], // ド レ ミ ファ ソ ラ シ
+};
+function buildPad() {
+  pad.textContent = '';
+  PAD_ORDERS[settings.padOrder].forEach(i => {
+    const b = document.createElement('button');
+    b.textContent = NAMES[i];
+    b.addEventListener('click', () => { b.blur(); answer(i); });
+    pad.appendChild(b);
+  });
+}
+buildPad();
+$('padOrderSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('padOrderSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  settings.padOrder = b.dataset.v;
+  b.blur();
+  buildPad();
 });
 
 window.addEventListener('keydown', e => {
