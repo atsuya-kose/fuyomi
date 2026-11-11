@@ -60,7 +60,7 @@
   .buffer { color: var(--accent); }
   .ime { color: var(--ng); font-size: 14px; font-family: inherit; }
   .pad { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 12px; }
-  .pad[hidden], #romajiGuide[hidden] { display: none; }
+  .pad[hidden], #romajiGuide[hidden], #widthBox[hidden], #cposBox[hidden] { display: none; }
   .pad button { padding: 12px 0; font: inherit; font-size: 16px; border: 1px solid var(--muted); border-radius: 8px; background: var(--card); color: var(--fg); cursor: pointer; }
   .pad button:active { background: var(--accent); color: #fff; }
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; }
@@ -86,11 +86,26 @@
         <button data-v="snake">蛇</button>
       </span>
     </div>
+    <div id="widthBox" hidden><span class="label">蛇の幅</span>
+      <span class="seg" id="widthSeg">
+        <button data-v="3" class="on">3度まで</button>
+        <button data-v="4">4度まで</button>
+      </span>
+    </div>
     <div><span class="label">音部記号</span>
       <span class="seg" id="clefSeg">
         <button data-v="treble" class="on">ト音</button>
         <button data-v="bass">ヘ音</button>
+        <button data-v="c">ハ音</button>
         <button data-v="mix">ミックス</button>
+      </span>
+    </div>
+    <div id="cposBox" hidden><span class="label">ハ音の位置</span>
+      <span class="seg" id="cposSeg">
+        <button data-v="alto" class="on">アルト</button>
+        <button data-v="tenor">テノール</button>
+        <button data-v="soprano">ソプラノ</button>
+        <button data-v="random">ランダム</button>
       </span>
     </div>
     <div><span class="label">入力ガイド</span>
@@ -126,7 +141,7 @@
   <p class="help">
     <span id="romajiGuide" hidden>ローマ字で入力します:
     <kbd>si</kbd>/<kbd>shi</kbd>/<kbd>ti</kbd> シ　<kbd>so</kbd> ソ　<kbd>do</kbd> ド　<kbd>fa</kbd> ファ　<kbd>mi</kbd> ミ　<kbd>ra</kbd>/<kbd>la</kbd> ラ　<kbd>re</kbd> レ<br></span>
-    蛇モードは、隣か1つ飛ばしの音(2度・3度)で上下に連なって出題されます。<kbd>Esc</kbd> で中断します。
+    蛇モードは、隣り合う音から「蛇の幅」で選んだ度数まで(3度までなら2度・3度、4度までなら2〜4度)の音で上下に連なって出題されます。ハ音記号は、ドの位置がアルト(第3線)・テノール(第4線)・ソプラノ(第1線)になります。<kbd>Esc</kbd> で中断します。
   </p>
 </main>
 
@@ -153,12 +168,16 @@
 // 音 = 全音階の通し番号: octave*7 + letter (0=ド … 6=シ)。C4=28
 const NAMES = ['ド', 'レ', 'ミ', 'ファ', 'ソ', 'ラ', 'シ'];
 const letterOf = n => ((n % 7) + 7) % 7;
-const BOTTOM_LINE = { treble: 30 /* E4 */, bass: 18 /* G2 */ };
+// 第1線の音。ハ音記号は C4(28) が置かれる線で決まる: ソプラノ=第1線, アルト=第3線, テノール=第4線
+const BOTTOM_LINE = { treble: 30 /* E4 */, bass: 18 /* G2 */, soprano: 28 /* C4 */, alto: 24 /* F3 */, tenor: 22 /* D3 */ };
 const staffPos = (n, clef) => n - BOTTOM_LINE[clef]; // 0=第1線 … 8=第5線
 // 出題範囲: 五線の内側のみ(加線なし)
 const RANGE = {
-  treble: { min: BOTTOM_LINE.treble, max: BOTTOM_LINE.treble + 8 }, // ミ4 〜 ファ5
-  bass:   { min: BOTTOM_LINE.bass,   max: BOTTOM_LINE.bass + 8 },   // ソ2 〜 ラ3
+  treble:  { min: BOTTOM_LINE.treble,  max: BOTTOM_LINE.treble + 8 },  // ミ4 〜 ファ5
+  bass:    { min: BOTTOM_LINE.bass,    max: BOTTOM_LINE.bass + 8 },    // ソ2 〜 ラ3
+  soprano: { min: BOTTOM_LINE.soprano, max: BOTTOM_LINE.soprano + 8 }, // ド4 〜 レ5
+  alto:    { min: BOTTOM_LINE.alto,    max: BOTTOM_LINE.alto + 8 },    // ファ3 〜 ソ4
+  tenor:   { min: BOTTOM_LINE.tenor,   max: BOTTOM_LINE.tenor + 8 },   // レ3 〜 ミ4
 };
 const SEMI = [0, 2, 4, 5, 7, 9, 11];
 const freqOf = n => {
@@ -260,6 +279,23 @@ function drawBass(g, top) {
   el('circle', { class: 'clefdot', cx: X0 + 40, cy: fy + SP / 2, r: 2.2 }, g);
 }
 
+// ハ音記号: 2本の縦線と、ドの線を挟む上下2つのふくらみ
+const C_LINE = { soprano: 0, alto: 2, tenor: 3 }; // 第1線から何本目(0始まり)
+function drawCClef(g, top, clef) {
+  const cy = top + 4 * SP - C_LINE[clef] * SP;
+  const x = X0 + 8;
+  el('rect', { class: 'clefdot', x, y: cy - 20, width: 5, height: 40 }, g);
+  el('rect', { class: 'clefdot', x: x + 8, y: cy - 20, width: 1.6, height: 40 }, g);
+  el('path', { class: 'clef', 'stroke-width': 2.6,
+    d: `M ${x + 10} ${cy} L ${x + 15} ${cy - 4} C ${x + 24} ${cy - 2}, ${x + 30} ${cy - 8}, ${x + 30} ${cy - 13} `
+     + `C ${x + 30} ${cy - 21}, ${x + 18} ${cy - 22}, ${x + 18} ${cy - 15}` }, g);
+  el('path', { class: 'clef', 'stroke-width': 2.6,
+    d: `M ${x + 10} ${cy} L ${x + 15} ${cy + 4} C ${x + 24} ${cy + 2}, ${x + 30} ${cy + 8}, ${x + 30} ${cy + 13} `
+     + `C ${x + 30} ${cy + 21}, ${x + 18} ${cy + 22}, ${x + 18} ${cy + 15}` }, g);
+  el('circle', { class: 'clefdot', cx: x + 19.5, cy: cy - 15, r: 3 }, g);
+  el('circle', { class: 'clefdot', cx: x + 19.5, cy: cy + 15, r: 3 }, g);
+}
+
 function render(svg, game) {
   svg.textContent = '';
   const perRow = chooseLayout(svg.clientWidth || 860);
@@ -275,7 +311,9 @@ function render(svg, game) {
     for (let i = 0; i < 5; i++) el('line', { class: 'staffline', x1: X0, x2: X0 + STAFF_W, y1: top + i * SP, y2: top + i * SP }, g);
     el('line', { class: 'staffline', x1: X0, x2: X0, y1: top, y2: top + 4 * SP }, g);
     el('line', { class: 'staffline', x1: X0 + STAFF_W, x2: X0 + STAFF_W, y1: top, y2: top + 4 * SP }, g);
-    clef === 'treble' ? drawTreble(g, top) : drawBass(g, top);
+    if (clef === 'treble') drawTreble(g, top);
+    else if (clef === 'bass') drawBass(g, top);
+    else drawCClef(g, top, clef);
 
     for (let j = 0; j < perRow; j++) {
       const idx = row * perRow + j;
@@ -325,12 +363,16 @@ function beep(freq, ok = true) {
 }
 
 /* ===== storage ===== */
-const bestKey = () => `fudoku64.best.${settings.mode}.${settings.clef}`;
+const bestKey = () => {
+  const mode = settings.mode === 'snake' ? `snake${settings.width}` : settings.mode;
+  const clef = settings.clef === 'c' ? `c-${settings.cpos}` : settings.clef;
+  return `fudoku64.best.${mode}.${clef}`;
+};
 const loadBest = () => { try { const v = localStorage.getItem(bestKey()); return v ? Number(v) : null; } catch (e) { return null; } };
 const saveBest = v => { try { localStorage.setItem(bestKey(), String(v)); } catch (e) {} };
 
 /* ===== game/session ===== */
-const settings = { mode: 'random', clef: 'treble', sound: true, pad: true };
+const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 3 };
 const game = { state: 'idle', notes: [], clefs: Array(ROWS).fill('treble'), cursor: 0, misses: 0, missed: [], flashNg: false, t0: 0, elapsed: 0 };
 const $ = id => document.getElementById(id);
 const svg = $('score');
@@ -338,13 +380,19 @@ let timerId = null, ngTimer = null;
 
 function newProblem() {
   const rng = Math.random;
-  const clefs = Array.from({ length: ROWS }, () =>
-    settings.clef === 'mix' ? pick(['treble', 'bass'], rng) : settings.clef);
-  const gen = settings.mode === 'snake' ? genSnake : genRandom;
+  const clefOfBlock = () => {
+    if (settings.clef === 'mix') return pick(['treble', 'bass'], rng);
+    if (settings.clef === 'c') return settings.cpos === 'random' ? pick(['alto', 'tenor', 'soprano'], rng) : settings.cpos;
+    return settings.clef;
+  };
+  const clefs = Array.from({ length: ROWS }, clefOfBlock);
+  // 蛇の幅: 3度まで → 2度・3度(1〜2段)、4度まで → 2〜4度(1〜3段)
+  const steps = settings.width === 4 ? [1, 2, 3] : [1, 2];
+  const gen = settings.mode === 'snake' ? o => genSnake({ ...o, steps }) : genRandom;
   let notes;
-  if (settings.clef !== 'mix') {
+  if (clefs.every(c => c === clefs[0])) {
     notes = gen({ ...RANGE[clefs[0]], count: COUNT, rng });
-  } else { // ミックスは段ごとに音部記号が違うので段ごとに生成
+  } else { // 段ごとに音部記号が違うときは段ごとに生成
     notes = clefs.flatMap(c => gen({ ...RANGE[c], count: PER_ROW, rng }));
   }
   Object.assign(game, { state: 'playing', notes, clefs, cursor: 0, misses: 0, missed: [], flashNg: false, t0: performance.now(), elapsed: 0 });
@@ -418,11 +466,18 @@ function bindSeg(id, key, map = v => v) {
     const b = e.target.closest('button'); if (!b) return;
     $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     settings[key] = map(b.dataset.v);
-    if (key === 'mode' || key === 'clef') abort(); else update();
+    if (['mode', 'clef', 'cpos', 'width'].includes(key)) abort(); else update();
+    syncSubControls();
     b.blur();
   });
 }
+function syncSubControls() {
+  $('widthBox').hidden = settings.mode !== 'snake';
+  $('cposBox').hidden = settings.clef !== 'c';
+}
 bindSeg('modeSeg', 'mode');
+bindSeg('widthSeg', 'width', v => Number(v));
+bindSeg('cposSeg', 'cpos');
 bindSeg('clefSeg', 'clef');
 bindSeg('soundSeg', 'sound', v => v === 'on');
 bindSeg('padSeg', 'pad', v => v === 'on');
