@@ -40,6 +40,10 @@
     .pad-order { margin-top: 8px; display: flex; justify-content: flex-end; align-items: center; }
   .pad button { padding: 9px 0; font-size: 15px; }
     .help { font-size: 11px; margin-top: 8px; line-height: 1.5; }
+    /* プレイ中は設定まわりを畳んで、楽譜と入力ボタンを1画面に収める */
+    body.playing .controls, body.playing h1 { display: none; }
+    body.playing .stop { display: inline-block; }
+    .range-text { display: block; margin: 2px 0 0 0; }
   }
   .board { background: var(--card); border-radius: 12px; padding: 12px 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   svg { width: 100%; height: auto; display: block; }
@@ -51,6 +55,10 @@
   .note.done { fill: var(--ok); } .note.done .stem { stroke: var(--ok); }
   .note.done.missed { fill: var(--warn); } .note.done.missed .stem { stroke: var(--warn); }
   .note.ng { fill: var(--ng); } .note.ng .stem { stroke: var(--ng); }
+  .range-text { font-size: 11px; color: var(--muted); margin-left: 6px; }
+  .stop { display: none; margin-left: auto; border: 1px solid var(--muted); background: transparent; color: var(--fg); border-radius: 6px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .range-text { flex-basis: 100%; }
+
   .ledger { stroke: var(--line); stroke-width: 1; }
   .cursor { fill: var(--accent); opacity: .13; }
   .answer { font-size: 9px; fill: var(--ok); text-anchor: middle; font-weight: 600; }
@@ -112,6 +120,16 @@
         <button data-v="random">ランダム</button>
       </span>
     </div>
+    <div><span class="label">音域</span>
+      <span class="seg" id="rangeSeg">
+        <button data-v="0" class="on">五線内</button>
+        <button data-v="1">すぐ外まで</button>
+        <button data-v="2">加線1本</button>
+        <button data-v="3">加線2本</button>
+        <button data-v="4">加線3本</button>
+      </span>
+      <span class="range-text" id="rangeText"></span>
+    </div>
     <div><span class="label">入力ガイド</span>
       <span class="seg" id="padSeg">
         <button data-v="off">非表示</button>
@@ -131,6 +149,7 @@
     <span>進捗 <b id="progress">0 / 64</b></span>
     <span>ミス <b id="misses">0</b></span>
     <span>時間 <b id="timer">0.0</b> 秒</span>
+    <button class="stop" id="stopBtn">中断</button>
   </div>
 
   <div class="board"><svg id="score" viewBox="0 0 860 214" role="img" aria-label="楽譜"></svg></div>
@@ -182,13 +201,14 @@ const letterOf = n => ((n % 7) + 7) % 7;
 const BOTTOM_LINE = { treble: 30 /* E4 */, bass: 18 /* G2 */, soprano: 28 /* C4 */, alto: 24 /* F3 */, tenor: 22 /* D3 */ };
 const staffPos = (n, clef) => n - BOTTOM_LINE[clef]; // 0=第1線 … 8=第5線
 // 出題範囲: 五線の内側のみ(加線なし)
-const RANGE = {
-  treble:  { min: BOTTOM_LINE.treble,  max: BOTTOM_LINE.treble + 8 },  // ミ4 〜 ファ5
-  bass:    { min: BOTTOM_LINE.bass,    max: BOTTOM_LINE.bass + 8 },    // ソ2 〜 ラ3
-  soprano: { min: BOTTOM_LINE.soprano, max: BOTTOM_LINE.soprano + 8 }, // ド4 〜 レ5
-  alto:    { min: BOTTOM_LINE.alto,    max: BOTTOM_LINE.alto + 8 },    // ファ3 〜 ソ4
-  tenor:   { min: BOTTOM_LINE.tenor,   max: BOTTOM_LINE.tenor + 8 },   // レ3 〜 ミ4
-};
+// 音域(五線の外へ何段はみ出すか): 0=五線内, 1=すぐ外(加線なし), 2=加線1本, 3=加線2本, 4=加線3本
+// staffPos でいうと 0..8 を下へ OUT 段、上へ OUT 段広げる(加線1本 = 2段+1段)
+const OUT_OF = { 0: 0, 1: 1, 2: 3, 3: 5, 4: 7 };
+const outOf = () => OUT_OF[settings.range];
+const rangeOf = clef => ({ min: BOTTOM_LINE[clef] - outOf(), max: BOTTOM_LINE[clef] + 8 + outOf() });
+const LETTERS = 'CDEFGAB';
+const sciName = n => LETTERS[letterOf(n)] + Math.floor(n / 7);
+const rangeLabel = clef => { const r = rangeOf(clef); return `${NAMES[letterOf(r.min)]}(${sciName(r.min)})〜${NAMES[letterOf(r.max)]}(${sciName(r.max)})`; };
 const SEMI = [0, 2, 4, 5, 7, 9, 11];
 const freqOf = n => {
   const midi = 12 * (Math.floor(n / 7) + 1) + SEMI[letterOf(n)];
@@ -250,7 +270,13 @@ function createRomaji(onNote) {
 /* ===== render/staff ===== */
 const SVGNS = 'http://www.w3.org/2000/svg';
 const SP = 10;                 // 線間
-const X0 = 20, NOTE_X0 = 88, NOTE_DX = 23.5, ROW_H = 95, FIRST_TOP = 32;
+const X0 = 20, NOTE_X0 = 88, NOTE_DX = 23.5;
+// 段の縦方向: 音域が広いほど五線の上下に余白をとる
+const extentAbove = () => Math.max(20, outOf() * (SP / 2) + 8);  // 第5線より上
+const extentBelow = () => Math.max(20, outOf() * (SP / 2) + 8);  // 第1線より下
+const labelOffset = () => Math.max(28, extentBelow() + 10);       // 第1線から音名まで
+const rowH = () => extentAbove() + 4 * SP + labelOffset() + 12;
+const firstTop = () => 12 + extentAbove();
 // 表示レイアウト: 画面幅に合わせて1段の音数(32/16/8)を選ぶ。線間が MIN_SP_PX 以上になる最大の音数
 const MIN_SP_PX = 6.5;
 const staffWOf = perRow => (NOTE_X0 - X0) + (perRow - 1) * NOTE_DX + 23;
@@ -268,7 +294,7 @@ const el = (tag, attrs = {}, parent) => {
   return e;
 };
 // 段の Y 座標: staffPos 0(第1線) が一番下
-const rowTop = row => FIRST_TOP + row * ROW_H; // 各段の第5線のY
+const rowTop = row => firstTop() + row * rowH(); // 各段の第5線のY
 const yOf = (row, pos) => rowTop(row) + 4 * SP - pos * (SP / 2);
 
 function drawTreble(g, top) {
@@ -312,7 +338,7 @@ function render(svg, game) {
   const perRow = chooseLayout(svg.clientWidth || 860);
   const rows = Math.ceil(COUNT / perRow);
   const STAFF_W = staffWOf(perRow);
-  svg.setAttribute('viewBox', `0 0 ${vbWOf(perRow)} ${rows * ROW_H + 24}`);
+  svg.setAttribute('viewBox', `0 0 ${vbWOf(perRow)} ${firstTop() + (rows - 1) * rowH() + 4 * SP + labelOffset() + 12}`);
   const root = el('g', {}, svg);
   for (let row = 0; row < rows; row++) {
     // 音部記号は出題上の段(32音ごと)で決まる。表示の段はその中に収まる
@@ -334,12 +360,15 @@ function render(svg, game) {
       const pos = staffPos(n, clef);
       const y = yOf(row, pos);
       if (idx === game.cursor && game.state === 'playing') {
-        el('rect', { class: 'cursor', x: x - 11, y: top - 20, width: 22, height: 4 * SP + 40, rx: 6 }, g);
+        el('rect', { class: 'cursor', x: x - 11, y: top - extentAbove(), width: 22, height: extentAbove() + 4 * SP + extentBelow(), rx: 6 }, g);
       }
       const cls = ['note'];
       if (idx < game.cursor) cls.push('done');
       if (game.missed[idx]) cls.push('missed');
       if (idx === game.cursor && game.flashNg) cls.push('ng');
+      // 加線: 五線の外の音には、音符の位置まで1段おき(偶数位置)に短い線を引く
+      for (let lp = -2; lp >= pos; lp -= 2) el('line', { class: 'ledger', x1: x - 8.5, x2: x + 8.5, y1: yOf(row, lp), y2: yOf(row, lp) }, g);
+      for (let lp = 10; lp <= pos; lp += 2) el('line', { class: 'ledger', x1: x - 8.5, x2: x + 8.5, y1: yOf(row, lp), y2: yOf(row, lp) }, g);
       const ng = el('g', { class: cls.join(' ') }, g);
       el('ellipse', { cx: x, cy: y, rx: 6.4, ry: 4.6, transform: `rotate(-20 ${x} ${y})` }, ng);
       const up = pos < 4;
@@ -349,7 +378,7 @@ function render(svg, game) {
       // 音名: 答えた音の下に表示(結果画面では全音)
       const showLabel = game.state === 'result' || idx < game.cursor;
       if (showLabel) {
-        const t = el('text', { class: game.missed[idx] ? 'answer miss' : 'answer', x, y: top + 4 * SP + 28 }, g);
+        const t = el('text', { class: game.missed[idx] ? 'answer miss' : 'answer', x, y: top + 4 * SP + labelOffset() }, g);
         t.textContent = NAMES[letterOf(n)];
       }
     }
@@ -379,13 +408,14 @@ const bestKey = () => {
   const w = { u3: '3', u4: '4' }[settings.width] || settings.width;
   const mode = settings.mode === 'snake' ? `snake${w}` : settings.mode;
   const clef = settings.clef === 'c' ? `c-${settings.cpos}` : settings.clef;
-  return `fudoku64.best.${mode}.${clef}`;
+  const range = settings.range ? `.r${settings.range}` : '';
+  return `fudoku64.best.${mode}.${clef}${range}`;
 };
 const loadBest = () => { try { const v = localStorage.getItem(bestKey()); return v ? Number(v) : null; } catch (e) { return null; } };
 const saveBest = v => { try { localStorage.setItem(bestKey(), String(v)); } catch (e) {} };
 
 /* ===== game/session ===== */
-const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 'u3', padOrder: 'kana' };
+const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 'u3', padOrder: 'kana', range: 0 };
 const game = { state: 'idle', notes: [], clefs: Array(ROWS).fill('treble'), cursor: 0, misses: 0, missed: [], flashNg: false, t0: 0, elapsed: 0 };
 const $ = id => document.getElementById(id);
 const svg = $('score');
@@ -404,9 +434,9 @@ function newProblem() {
   const gen = settings.mode === 'snake' ? o => genSnake({ ...o, steps }) : genRandom;
   let notes;
   if (clefs.every(c => c === clefs[0])) {
-    notes = gen({ ...RANGE[clefs[0]], count: COUNT, rng });
+    notes = gen({ ...rangeOf(clefs[0]), count: COUNT, rng });
   } else { // 段ごとに音部記号が違うときは段ごとに生成
-    notes = clefs.flatMap(c => gen({ ...RANGE[c], count: PER_ROW, rng }));
+    notes = clefs.flatMap(c => gen({ ...rangeOf(c), count: PER_ROW, rng }));
   }
   Object.assign(game, { state: 'playing', notes, clefs, cursor: 0, misses: 0, missed: [], flashNg: false, t0: performance.now(), elapsed: 0 });
   romaji.reset();
@@ -462,6 +492,7 @@ function abort() {
 }
 
 function update() {
+  document.body.classList.toggle('playing', game.state === 'playing');
   render(svg, game);
   $('pad').hidden = !settings.pad;
   $('padOrderBox').hidden = !settings.pad;
@@ -480,7 +511,7 @@ function bindSeg(id, key, map = v => v) {
     const b = e.target.closest('button'); if (!b) return;
     $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     settings[key] = map(b.dataset.v);
-    if (['mode', 'clef', 'cpos', 'width'].includes(key)) abort(); else update();
+    if (['mode', 'clef', 'cpos', 'width', 'range'].includes(key)) abort(); else update();
     syncSubControls();
     b.blur();
   });
@@ -488,14 +519,21 @@ function bindSeg(id, key, map = v => v) {
 function syncSubControls() {
   $('widthBox').hidden = settings.mode !== 'snake';
   $('cposBox').hidden = settings.clef !== 'c';
+  const shown = settings.clef === 'mix' ? ['treble', 'bass']
+    : settings.clef === 'c' ? (settings.cpos === 'random' ? ['alto', 'tenor', 'soprano'] : [settings.cpos])
+    : [settings.clef];
+  const JP = { treble: 'ト音', bass: 'ヘ音', alto: 'アルト', tenor: 'テノール', soprano: 'ソプラノ' };
+  $('rangeText').textContent = shown.map(c => (shown.length > 1 ? JP[c] + ' ' : '') + rangeLabel(c)).join(' / ');
 }
 bindSeg('modeSeg', 'mode');
 bindSeg('widthSeg', 'width');
 bindSeg('cposSeg', 'cpos');
+bindSeg('rangeSeg', 'range', v => Number(v));
 bindSeg('clefSeg', 'clef');
 bindSeg('soundSeg', 'sound', v => v === 'on');
 bindSeg('padSeg', 'pad', v => v === 'on');
 $('startBtn').addEventListener('click', e => { e.target.blur(); newProblem(); });
+$('stopBtn').addEventListener('click', e => { e.target.blur(); abort(); });
 $('reviewBtn').addEventListener('click', () => $('overlay').classList.remove('show'));
 $('againBtn').addEventListener('click', e => { e.target.blur(); newProblem(); });
 
@@ -543,6 +581,7 @@ window.addEventListener('resize', () => {
   const pr = chooseLayout(svg.clientWidth || 860);
   if (pr !== lastPerRow) { lastPerRow = pr; update(); }
 });
+syncSubControls();
 update();
 </script>
 </body>
