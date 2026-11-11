@@ -88,8 +88,11 @@
     </div>
     <div id="widthBox" hidden><span class="label">蛇の幅</span>
       <span class="seg" id="widthSeg">
-        <button data-v="3" class="on">3度まで</button>
-        <button data-v="4">4度まで</button>
+        <button data-v="f2">2度固定</button>
+        <button data-v="f3">3度固定</button>
+        <button data-v="u3" class="on">3度まで</button>
+        <button data-v="u4">4度まで</button>
+        <button data-v="u5">5度まで</button>
       </span>
     </div>
     <div><span class="label">音部記号</span>
@@ -141,7 +144,7 @@
   <p class="help">
     <span id="romajiGuide" hidden>ローマ字で入力します:
     <kbd>si</kbd>/<kbd>shi</kbd>/<kbd>ti</kbd> シ　<kbd>so</kbd> ソ　<kbd>do</kbd> ド　<kbd>fa</kbd> ファ　<kbd>mi</kbd> ミ　<kbd>ra</kbd>/<kbd>la</kbd> ラ　<kbd>re</kbd> レ<br></span>
-    蛇モードは、隣り合う音から「蛇の幅」で選んだ度数まで(3度までなら2度・3度、4度までなら2〜4度)の音で上下に連なって出題されます。ハ音記号は、ドの位置がアルト(第3線)・テノール(第4線)・ソプラノ(第1線)になります。<kbd>Esc</kbd> で中断します。
+    蛇モードは、隣り合う音から「蛇の幅」で選んだ度数の音で上下に連なって出題されます(固定はその度数だけ、「〜まで」は2度からその度数まで)。ハ音記号は、ドの位置がアルト(第3線)・テノール(第4線)・ソプラノ(第1線)になります。<kbd>Esc</kbd> で中断します。
   </p>
 </main>
 
@@ -186,6 +189,7 @@ const freqOf = n => {
 };
 
 /* ===== gen ===== */
+const SNAKE_STEPS = { f2: [1], f3: [2], u3: [1, 2], u4: [1, 2, 3], u5: [1, 2, 3, 4] };
 const ROWS = 2, PER_ROW = 32, COUNT = ROWS * PER_ROW;
 const randInt = (a, b, rng) => a + Math.floor(rng() * (b - a + 1));
 const pick = (arr, rng) => arr[Math.floor(rng() * arr.length)];
@@ -364,7 +368,9 @@ function beep(freq, ok = true) {
 
 /* ===== storage ===== */
 const bestKey = () => {
-  const mode = settings.mode === 'snake' ? `snake${settings.width}` : settings.mode;
+  // 3度まで/4度までは以前のキー(snake3/snake4)を引き継ぐ
+  const w = { u3: '3', u4: '4' }[settings.width] || settings.width;
+  const mode = settings.mode === 'snake' ? `snake${w}` : settings.mode;
   const clef = settings.clef === 'c' ? `c-${settings.cpos}` : settings.clef;
   return `fudoku64.best.${mode}.${clef}`;
 };
@@ -372,7 +378,7 @@ const loadBest = () => { try { const v = localStorage.getItem(bestKey()); return
 const saveBest = v => { try { localStorage.setItem(bestKey(), String(v)); } catch (e) {} };
 
 /* ===== game/session ===== */
-const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 3 };
+const settings = { mode: 'random', clef: 'treble', sound: true, pad: true, cpos: 'alto', width: 'u3' };
 const game = { state: 'idle', notes: [], clefs: Array(ROWS).fill('treble'), cursor: 0, misses: 0, missed: [], flashNg: false, t0: 0, elapsed: 0 };
 const $ = id => document.getElementById(id);
 const svg = $('score');
@@ -386,8 +392,8 @@ function newProblem() {
     return settings.clef;
   };
   const clefs = Array.from({ length: ROWS }, clefOfBlock);
-  // 蛇の幅: 3度まで → 2度・3度(1〜2段)、4度まで → 2〜4度(1〜3段)
-  const steps = settings.width === 4 ? [1, 2, 3] : [1, 2];
+  // 蛇の幅(全音階の段数): 2度=1, 3度=2, 4度=3, 5度=4
+  const steps = SNAKE_STEPS[settings.width];
   const gen = settings.mode === 'snake' ? o => genSnake({ ...o, steps }) : genRandom;
   let notes;
   if (clefs.every(c => c === clefs[0])) {
@@ -476,7 +482,7 @@ function syncSubControls() {
   $('cposBox').hidden = settings.clef !== 'c';
 }
 bindSeg('modeSeg', 'mode');
-bindSeg('widthSeg', 'width', v => Number(v));
+bindSeg('widthSeg', 'width');
 bindSeg('cposSeg', 'cpos');
 bindSeg('clefSeg', 'clef');
 bindSeg('soundSeg', 'sound', v => v === 'on');
